@@ -15,6 +15,8 @@ class View:
         # Controller
         self.controller = None
 
+
+
     def show_alert(self, messaggio):
         self.alert.show_alert(messaggio)
 
@@ -30,7 +32,7 @@ class View:
         self.txt_titolo = ft.Text(value="Gestione Vendita Biciclette", size=30, weight=ft.FontWeight.BOLD)
 
         # Riga 1
-        self.dd_category = ft.Dropdown(label="Categoria", width=200) # TODO: Gestire il dropdown
+        self.dd_category = ft.Dropdown(label="Categoria", width=200, options=self.controller.dropdown_categorie()) # TODO: Gestire il dropdown
 
         self.dp1 = ft.DatePicker(
             on_change=lambda e: print(f"Giorno selezionato: {self.dp1.value}"),
@@ -63,8 +65,8 @@ class View:
 
         # Riga 2
         self.txt_lunghezza_cammino = ft.TextField(label="Lunghezza Cammino", width=120)
-        self.dd_prodotto_iniziale = ft.Dropdown(label="Prodotto Iniziale", width=350) # TODO: Gestire il dropdown
-        self.dd_prodotto_finale = ft.Dropdown(label="Prodotto Finale", width=350) # TODO: Gestire il dropdown
+        self.dd_prodotto_iniziale = ft.Dropdown(label="Prodotto Iniziale", width=350, options=self.controller.dropdown_prodotto())
+        self.dd_prodotto_finale = ft.Dropdown(label="Prodotto Finale", width=350, options=self.controller.dropdown_prodotto())
 
         self.pulsante_cerca_cammino = ft.ElevatedButton(text="Cerca", on_click=self.controller.handle_cerca_cammino, width=120)
 
@@ -75,6 +77,10 @@ class View:
 
         # --- Toggle Tema ---
         self.toggle_cambia_tema = ft.Switch(label="Tema scuro", value=True, on_change=self.cambia_tema)
+
+        self.lst_result = ft.ListView(expand=1, spacing=10, padding=20, auto_scroll=False)
+
+
 
         # --- Layout della pagina ---
         self.page.add(
