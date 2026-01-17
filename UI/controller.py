@@ -1,3 +1,5 @@
+import networkx as nx
+
 from UI.view import View
 from model.model import Model
 import flet as ft
@@ -8,11 +10,15 @@ class Controller:
         self._view = view
         self._model = model
 
-        self.numero_nodi = -1
-        self.numero_archi = -1
+        self.G = nx.DiGraph() #creo un digraph diretto per in questo problema influiscono pure le direzioni
+        self._nodes = None
+        self._edges = None
+        self._id_map = {}
 
-        self._lista_categorie = []
-        self._lista_nomi_prodotti = []
+        # valori selezionati nelle dropdown (oggetti Prodotto veri)
+        self.dd_prod_start_value = None
+        self.dd_prod_end_value = None
+
 
     def set_dates(self):
         first, last = self._model.get_date_range()
@@ -25,108 +31,145 @@ class Controller:
         self._view.dp2.last_date = datetime.date(last.year, last.month, last.day)
         self._view.dp2.current_date = datetime.date(last.year, last.month, last.day)
 
+    def aggiungi_categorie(self):
+        categorie = self._model.get_category()
+        return categorie
+
     def handle_crea_grafo(self, e):
         """ Handler per gestire creazione del grafo """
+        categoria = self._view.dd_category.value # mi prende la categoria selezionata dall'utente
+        self._nodes = self._model.prodotti_categoria(categoria)
+
+        data_inizio = self._view.dp1.value.date() #date prende proprio il giorno
+        data_fine = self._view.dp2.value.date()
+
+        if data_inizio is None or data_fine is None:
+            self._view.show_alert("SELEZIONA ENTRAMBE LE DATE!")
+            self._view.update()
+            return None
+
+        self.G = nx.DiGraph()
+
+        for prodotto in self._nodes:
+            self._id_map[prodotto.id] = prodotto
+            self.G.add_node(prodotto)
+
+        #print("NODI:", list(self.G.nodes))
+        pari = 0
+        for u in self.G:
+            print(u.id)
+            for v in self.G:
+                print(v.id)
+                if u.id  < v.id:
+                    #funzione verifica
+                    risultato = self._model.esiste_connessione(u, v, data_inizio, data_fine)
+
+                    if len(risultato) != 2:
+                        continue
+                        #vuol dire che per tutti e due i nodi c'è una connessione e quindi è presente la loro riga con il loro id e il loro numero di vendite
+
+                    vendite_v = 0
+                    vendite_u = 0
+
+                    for r in risultato:
+                        if r[0] == u.id:
+                            vendite_u = r[1]
+                        if r[0] == v.id:
+                            vendite_v = r[1]
+
+                    peso = vendite_u + vendite_v
+
+                    if vendite_u == vendite_v:
+                        pari  += 1
+
+                    if vendite_u > vendite_v:
+                        self.G.add_edge(u, v, weight=peso)
+                    elif vendite_u < vendite_v:
+                        self.G.add_edge(v, u, weight=peso)
+                    elif vendite_u == vendite_v:
+                        self.G.add_edge(u, v, weight=peso)
+                        self.G.add_edge(v, u, weight=peso)
+
+                    print("COPPIE IN PARI:", pari)
+                    print("ARCHI:", self.G.number_of_edges())
+
         self._view.txt_risultato.controls.clear()
-
-        categoria = self._view.dd_category.value
-        print(categoria)
-        data_inizio = self._view.dp1.current_date
-        data_fine = self._view.dp2.current_date
-        self._view.txt_risultato.controls.append(ft.Text(f"Date selezionate: "))
-        self._view.txt_risultato.controls.append(ft.Text(f"Start date: {data_inizio.strftime('%d/%m/%Y')}"))
-        self._view.txt_risultato.controls.append(ft.Text(f"End date: {data_fine.strftime('%d/%m/%Y')}"))
-
-        numero_nodi, numero_archi = self._model.costruisci_grafo(categoria, data_inizio, data_fine)
-        if numero_archi != -1 and numero_nodi != -1:
-            self._view.txt_risultato.controls.append(ft.Text("Grafo correttamente creato:"))
-            self._view.txt_risultato.controls.append(ft.Text(f"Numero di nodi: {numero_nodi}"))
-            self._view.txt_risultato.controls.append(ft.Text(f"Numero di archi: {numero_archi}"))
+        self._view.txt_risultato.controls.append(ft.Text("Date selezionate:"))
+        self._view.txt_risultato.controls.append(ft.Text(f"Start date: {data_inizio}"))
+        self._view.txt_risultato.controls.append(ft.Text(f"End date: {data_fine}"))
+        if self.G.number_of_nodes() > 0 and self.G.number_of_edges() > 0:
+            self._view.txt_risultato.controls.append(ft.Text("Grafo correttamente creato: "))
+            self._view.txt_risultato.controls.append(ft.Text(f"Numero di nodi: {self.G.number_of_nodes()}"))
+            self._view.txt_risultato.controls.append(ft.Text(f"Numero di archi: {self.G.number_of_edges()}"))
         else:
-            self._view.alert("Il grafo non è stato creato correttamente")
-
+            self._view.show_alert("La creazione del grafo ha riscontrato dei problemi!")
 
         self._view.update()
 
     def handle_best_prodotti(self, e):
         """ Handler per gestire la ricerca dei prodotti migliori """
-        piu_venduti = self._model.i_piu_venduti()
-        if len(piu_venduti)> 0 :
+        best_prodotti = []
+        for n in self.G.nodes:
+            score = 0
+            #data = True mi da anche i pesi dell'arco e quindi posso andare a recuperare il weight ti restituisce: [(n, v1, {"weight": 2}),
+            for e_out in self.G.out_edges(n, data=True):
+                score += e_out[2]["weight"]
+            for e_in in self.G.in_edges(n, data=True):
+                score -= e_in[2]["weight"]
 
-            self._view.txt_risultato.controls.append(ft.Text("\nI cinque prodotti più venduti sono: "))
-            for venduto in piu_venduti:
-                self._view.txt_risultato.controls.append(ft.Text(f"{venduto[0].product_name} with score {venduto[1]}"))
-        else:
-            self._view.alert("Errore di caricamento del grafo")
+            best_prodotti.append((n.product_name, score))
+        #ordina in base al secondo elemento della lista ovvero lo score | reverse = True vuol dire che ordini dal piu grande al piu piccolo
+        best_prodotti.sort(reverse=True, key=lambda x: x[1])
+
+        self._view.txt_risultato.controls.append(ft.Text("\nI cinque prodotti più venduti sono:"))
+        for prodotto in best_prodotti[0:5]:
+            self._view.txt_risultato.controls.append(ft.Text(f"{prodotto[0]} with score {prodotto[1]}"))
 
         self._view.update()
-
-
 
     def handle_cerca_cammino(self, e):
         """ Handler per gestire il problema ricorsivo di ricerca del cammino """
-        self._view.txt_risultato.controls.clear() #pulisco la listview prima di metterci dei dati
+        id_prodotto_iniziale = int(self._view.dd_prodotto_iniziale.value)
+        id_prodotto_finale = int(self._view.dd_prodotto_finale.value)
+
+
+        start = self._id_map[id_prodotto_iniziale]
+        print(f"Partenza {start}")
+        end = self._id_map[id_prodotto_finale]
+        print(f"Fine {end}")
+        lungh = int(self._view.txt_lunghezza_cammino.value)
+        print(f"Lunghezza {lungh}")
+
+
+        miglior_percorso , miglior_score = self._model.get_best_path(start, end, lungh, self.G)
+
+        self._view.txt_risultato.controls.clear()
+        self._view.txt_risultato.controls.append(ft.Text("Cammino migliore: "))
+        for prodotto in miglior_percorso:
+            nome_prodotto = prodotto.product_name
+            self._view.txt_risultato.controls.append(ft.Text(f"{nome_prodotto}"))
+
+        self._view.txt_risultato.controls.append(ft.Text(f"Score: {miglior_score} "))
+
         self._view.update()
 
-        val = self._view.txt_lunghezza_cammino.value
-        if val is None or val.strip() == "" or not val.isdigit():
-            self._view.alert("Inserisci un numero valido per la lunghezza del cammino")
-            return
-        lunghezza_cammino = int(val)
-        prodotto_iniziale = self._view.dd_prodotto_iniziale.value
-        prodotto_finale = self._view.dd_prodotto_finale.value
 
-        if prodotto_iniziale is None or prodotto_finale is None:
-            self._view.alert("Seleziona prodotto iniziale e prodotto finale")
-            return
+    def handle_category_change(self, e):
+        categoria = self._view.dd_category.value
+        lista_nomi_categoria = self._model.nomi_prodotti_categoria(categoria)
 
-        start, end = self.restituisci_id(prodotto_iniziale, prodotto_finale)
+        options = [ft.dropdown.Option(key = id, text=nome) for id, nome in lista_nomi_categoria]
 
-        print("Lunghezza cammino: ", lunghezza_cammino)
-        print("Prodotto iniziale: ", prodotto_iniziale)
-        print("Prodotto finale: ", prodotto_finale)
+        self._view.dd_prodotto_iniziale.options = options
+        self._view.dd_prodotto_finale.options = options.copy()
 
-        miglior_percorso , miglior_score = self._model.get_best_path(lunghezza_cammino, start,end)
+        #riabilito i bottoni
+        self._view.dd_prodotto_iniziale.disabled = False
+        self._view.dd_prodotto_finale.disabled = False
 
-        self._view.txt_risultato.controls.append(ft.Text("Cammino migliore"))
 
-        if not miglior_percorso:
-            self._view.txt_risultato.controls.append(ft.Text("Nessun cammino trovato con i vincoli richiesti"))
-            self._view.update()
-            return
-
-        for p in miglior_percorso:
-            self._view.txt_risultato.controls.append(ft.Text(p.product_name))
-
-        self._view.txt_risultato.controls.append(ft.Text(f"Score: {miglior_score}"))
         self._view.update()
 
-    def dropdown_categorie(self):
-        lista_categorie = self._model.get_categorie()
-        for categoria in lista_categorie:
-            self._lista_categorie.append(ft.dropdown.Option(categoria[1]))
 
-        return self._lista_categorie
-
-    def dropdown_prodotto(self):
-        lista = []
-        lista_nomi_prodotto = self._model.get_all_nomi_prodotti()
-        for prodotto in lista_nomi_prodotto:
-            lista.append(ft.dropdown.Option(prodotto))
-
-        return lista
-
-    def restituisci_id(self, prodotto_iniziale, prodotto_finale):
-        lista_prodotti = self._model.get_all_prodotti()
-
-        id_iniziale = 0
-        id_finale = 0
-        for prodotto in lista_prodotti:
-            if prodotto.product_name == prodotto_iniziale:
-                id_iniziale = prodotto.id
-            if prodotto.product_name == prodotto_finale:
-                id_finale = prodotto.id
-
-        return id_iniziale, id_finale
 
 

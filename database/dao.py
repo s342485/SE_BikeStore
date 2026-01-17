@@ -1,5 +1,5 @@
 from database.DB_connect import DBConnect
-from model.prodotto import Prodotto
+from model.product import Product
 
 
 class DAO:
@@ -26,7 +26,7 @@ class DAO:
         return first, last
 
     @staticmethod
-    def get_all_categorie():
+    def get_category():
         conn = DBConnect.get_connection()
 
         results = []
@@ -36,7 +36,56 @@ class DAO:
         cursor.execute(query)
 
         for row in cursor:
-            results.append((row["id"],row["category_name"]))
+            #appendo delle tuple di categorie
+            results.append((row["id"], row["category_name"]))
+
+        cursor.close()
+        conn.close()
+        return results
+
+    @staticmethod
+    def get_product_by_category(category):
+        conn = DBConnect.get_connection()
+
+        results = []
+
+        cursor = conn.cursor(dictionary=True)
+        query = """SELECT * FROM product WHERE category_id = %s"""
+        cursor.execute(query, (category,))
+
+        for row in cursor:
+            p = Product(row["id"], row["product_name"], row["brand_id"], row["category_id"], row["model_year"], row["list_price"])
+            results.append(p)
+            #results è una lista di oggetti Prodotto
+
+        cursor.close()
+        conn.close()
+        return results
+
+    @staticmethod
+    def esiste_connessione(u, v, data_inizio, data_fine):
+        conn = DBConnect.get_connection()
+
+        results = []
+
+        cursor = conn.cursor(dictionary=True)
+
+        #STAMPA UNA TABELLA: CON ID E CONTO ORDINATE PER VENDITE MAGGIORI in un determinato arco temporale
+        query = """select p.id , count(p.id) as conto
+                   from order_item oi , `order` o , product p 
+                   where p.id = oi.product_id 
+                   and oi.order_id = o.id 
+                   and o.order_date >= %s
+                   and o.order_date <= %s
+                   and p.id in (%s,%s)
+                   group by p.id
+                   order by conto DESC"""
+
+        cursor.execute(query, (data_inizio, data_fine, u.id, v.id))
+
+        for row in cursor:
+            #tuple id conto
+            results.append((row["id"], row["conto"]))
 
 
         cursor.close()
@@ -44,90 +93,24 @@ class DAO:
         return results
 
     @staticmethod
-    def get_all_prodotti_categoria(id_categoria):
+    def get_product_name_by_category(category):
         conn = DBConnect.get_connection()
 
         results = []
 
         cursor = conn.cursor(dictionary=True)
-        query = """ SELECT * 
-                    FROM product
-                    WHERE category_id = %s """
-        cursor.execute(query, (id_categoria,))
+        query = """SELECT p.id, p.product_name FROM product p WHERE category_id = %s"""
+        cursor.execute(query, (category,))
 
         for row in cursor:
-            prodotto = Prodotto(row["id"],row["product_name"],row["brand_id"], row["category_id"], row["model_year"], row["list_price"])
-            results.append(prodotto)
+            #tuple id-nome
+            results.append((row["id"],row["product_name"]))
 
         cursor.close()
         conn.close()
         return results
 
-    @staticmethod
-    def exist_connessione_tra(u: Prodotto, v:Prodotto, data_inizio, data_fine):
-        """
-        Due prodotti sono collegati se sono stati venduti nello stesso periodo
-        Arco uscente nel caso di vendite maggiori
-        Arco entrante nel caso di vendite minori
-        Uguali inserisco entrambi gli archi
-        """
-        conn = DBConnect.get_connection()
-
-        results = []
 
 
-        cursor = conn.cursor(dictionary=True)
-        query = """SELECT p.id as id , count(distinct oi.order_id) as vendita
-                   FROM order_item oi , `order`  o,  product p 
-                   WHERE p.id = oi.product_id 
-                   AND o.id = oi.order_id 
-                   AND o.order_date >= %s AND o.order_date <= %s
-                   AND p.id in (%s, %s)
-                   GROUP BY p.id 
-                   ORDER BY vendita DESC
-                """
-        cursor.execute(query, (data_inizio,data_fine, u.id, v.id))
 
-        for row in cursor:
-            results.append((row["id"], row["vendita"]))
-
-        cursor.close()
-        conn.close()
-        return results
-
-    @staticmethod
-    def get_all_nomi_prodotti():
-        conn = DBConnect.get_connection()
-
-        results = []
-
-        cursor = conn.cursor(dictionary=True)
-        query = """ SELECT p.product_name as name FROM product p"""
-        cursor.execute(query)
-
-        for row in cursor:
-            results.append(row["name"])
-
-        cursor.close()
-        conn.close()
-        return results
-
-    @staticmethod
-    def get_all_prodotti():
-        conn = DBConnect.get_connection()
-
-        results = []
-
-        cursor = conn.cursor(dictionary=True)
-        query = """ SELECT * FROM product"""
-        cursor.execute(query)
-
-        for row in cursor:
-            prodotto = Prodotto(row["id"], row["product_name"], row["brand_id"], row["category_id"], row["model_year"],
-                                row["list_price"])
-            results.append(prodotto)
-
-        cursor.close()
-        conn.close()
-        return results
 
